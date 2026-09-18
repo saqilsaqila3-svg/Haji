@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catatan & Foto Berhasil</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .btn-save {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        .btn-save:hover {
+            background-color: #218838;
+        }
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .btn-delete:hover {
+            background-color: #c82333;
+        }
+        #preview {
+            max-width: 150px;
+            margin-top: 10px;
+            display: none;
+            border-radius: 4px;
+        }
+        .note-card {
+            background: white;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 5px solid #007bff;
+        }
+        .note-image {
+            max-width: 100%;
+            height: auto;
+            margin-top: 10px;
+            border-radius: 4px;
+            display: block;
+        }
+        .note-date {
+            font-size: 12px;
+            color: #777;
+            margin-top: 5px;
+        }
+        h2 {
+            margin-top: 30px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📝 Catatan & Foto</h1>
+    
+    <div class="form-group">
+        <label for="title">Judul:</label>
+        <input type="text" id="title" placeholder="Masukkan judul catatan...">
+    </div>
+    
+    <div class="form-group">
+        <label for="content">Isi Catatan:</label>
+        <textarea id="content" rows="4" placeholder="Tulis catatan Anda di sini..."></textarea>
+    </div>
+    
+    <div class="form-group">
+        <label for="photo">Ambil / Pilih Foto 📸:</label>
+        <input type="file" id="photo" accept="image/*" capture="environment">
+        <img id="preview" alt="Preview Foto">
+    </div>
+    
+    <button class="btn-save" onclick="saveNote()">Simpan Catatan</button>
+
+    <h2>Daftar Catatan Anda:</h2>
+    <div id="notesContainer"></div>
+
+    <script>
+        let db;
+        let selectedBase64Image = null;
+
+        // 1. Membuka Database IndexedDB (Data kebal refresh)
+        const request = indexedDB.open("FinalNotesDB", 1);
+
+        request.onupgradeneeded = function(e) {
+            db = e.target.result;
+            db.createObjectStore("notes", { keyPath: "id", autoIncrement: true });
+        };
+
+        request.onsuccess = function(e) {
+            db = e.target.result;
+            displayNotes(); // Memunculkan kembali catatan saat di-refresh
+        };
+
+        request.onerror = function(e) {
+            console.error("Gagal membuka database", e);
+        };
+
+        // 2. Membaca Foto dan Mengubahnya ke Base64 Teks
+        document.getElementById('photo').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    selectedBase64Image = event.target.result;
+                    const preview = document.getElementById('preview');
+                    preview.src = selectedBase64Image;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 3. Fungsi Menyimpan Catatan
+        function saveNote() {
+            const title = document.getElementById('title').value;
+            const content = document.getElementById('content').value;
+
+            if (!title || !content) {
+                alert("Judul dan Isi catatan wajib diisi!");
+                return;
+            }
+
+            const transaction = db.transaction(["notes"], "readwrite");
+            const store = transaction.objectStore("notes");
+
+            const newNote = {
+                title: title,
+                content: content,
+                image: selectedBase64Image,
+                date: new Date().toLocaleString("id-ID")
+            };
+
+            store.add(newNote);
+
+            transaction.oncomplete = function() {
+                // Reset form input setelah berhasil
+                document.getElementById('title').value = '';
+                document.getElementById('content').value = '';
+                document.getElementById('photo').value = '';
+                document.getElementById('preview').style.display = 'none';
+                selectedBase64Image = null;
+                
+                displayNotes();
+            };
+        }
+
+        // 4. Fungsi Menampilkan Semua Catatan & Foto
+        function displayNotes() {
+            const container = document.getElementById('notesContainer');
+            container.innerHTML = ""; 
+
+            const transaction = db.transaction(["notes"], "readonly");
+            const store = transaction.objectStore("notes");
+            
+            store.openCursor(null, "prev").onsuccess = function(e) {
+                const cursor = e.target.result;
+                if (cursor) {
+                    const note = cursor.value;
+
+                    const card = document.createElement('div');
+                    card.className = 'note-card';
+
+                    // Membuat elemen teks judul & isi
+                    const titleEl = document.createElement('h3');
+                    titleEl.textContent = note.title;
+                    card.appendChild(titleEl);
+
+                    const contentEl = document.createElement('p');
+                    contentEl.textContent = note.content;
+                    card.appendChild(contentEl);
+
+                    // MEMUNCULKAN FOTO (Jika ada foto yang diupload)
+                    if (note.image) {
+                        const imgEl = document.createElement('img');
+                        imgEl.src = note.image;
+                        imgEl.className = 'note-image';
+                        card.appendChild(imgEl);
+                    }
+
+                    // Informasi Waktu
+                    const dateEl = document.createElement('div');
+                    dateEl.className = 'note-date';
+                    dateEl.textContent = "Disimpan pada: " + note.date;
+                    card.appendChild(dateEl);
+
+                    // Tombol Hapus
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn-delete';
+                    deleteBtn.textContent = 'Hapus Catatan 🗑️';
+                    deleteBtn.onclick = function() {
+                        deleteNote(note.id);
+                    };
+                    card.appendChild(deleteBtn);
+
+                    container.appendChild(card);
+                    cursor.continue();
+                }
+            };
+        }
+
+        // 5. Fungsi Menghapus Catatan
+        function deleteNote(id) {
+            if (confirm("Apakah Anda yakin ingin menghapus catatan ini?")) {
+                const transaction = db.transaction(["notes"], "readwrite");
+                const store = transaction.objectStore("notes");
+                
+                store.delete(id);
+
+                transaction.oncomplete = function() {
+                    alert("Catatan berhasil dihapus!");
+                    displayNotes();
+                };
+            }
+        }
+    </script>
+</body>
+</html>
